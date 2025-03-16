@@ -16,7 +16,6 @@ is_already_copied() {
     fi
     # TARGET_DIR 기준 상대 경로 구하기
     local rel="${file#$target_dir/}"
-    # 파일이 하위 디렉터리에 있다면
     if [[ "$rel" == */* ]]; then
         local first_dir="${rel%%/*}"
         # 해당 하위 디렉터리에 marker 파일이 있으면, 스크립트로 생성된 태그 폴더임
@@ -28,7 +27,7 @@ is_already_copied() {
 }
 
 # 동일 파일명이 존재할 경우, 파일 내용이 동일하면 복사를 건너뛰고,
-# 동일하지 않으면 기존 복사본 중 suffix 숫자가 가장 큰 파일 번호 다음 숫자를 붙여 복사하는 함수
+# 내용이 다르면 기존 복사본 중 가장 큰 suffix 숫자 다음 숫자를 붙여 복사하는 함수
 copy_with_suffix() {
     local src="$1"
     local dest_dir="$2"
@@ -76,7 +75,7 @@ copy_with_suffix() {
     cp "$src" "$dest_file"
 }
 
-# RAW 파일 복사 함수: 원본 파일명에 해당하는 RAW 확장자를 가진 파일을 찾아 지정 디렉터리에 복사
+# RAW 파일 복사 함수: 원본 파일명과 동일한 이름의 RAW 확장자 파일을 찾아 복사
 copy_raw_files() {
     local file="$1"
     local tag="$2"
@@ -143,15 +142,37 @@ if [ -z "$TARGET_DIR" ]; then
     usage
 fi
 
-# 전체 파일 개수를 미리 계산하여 진행 상황 표시에 활용
-total=$(find "$TARGET_DIR" -type f | wc -l)
-count=0
+#####################################
+# Phase 1: Filtering files with tags
+#####################################
+echo "Phase 1: Filtering files with tags..."
 
-# 프로세스 진행 상황을 업데이트하며 파일 처리 (while 루프를 process substitution 방식으로 실행)
+# 전체 파일 개수를 먼저 파악 (필터링 진행 상황 표시용)
+total_all=$(find "$TARGET_DIR" -type f | wc -l)
+count_all=0
+files_with_tags=()
+
+# find 결과를 순회하며 태그 정보가 있는 파일만 배열에 저장
 while IFS= read -r file; do
-    count=$((count + 1))
-    process_file "$file" "$TARGET_DIR" "$DEST_DIR" "$RAW_DIR"
-    # 진행 상황 출력: carriage return(\r)을 이용해 같은 라인을 업데이트
-    echo -ne "Progress: $count / $total files processed\r"
+    count_all=$((count_all + 1))
+    echo -ne "Filtering progress: $count_all / $total_all files processed\r"
+    if [ "$(mdls -raw -name kMDItemUserTags "$file")" != "(null)" ]; then
+        files_with_tags+=("$file")
+    fi
 done < <(find "$TARGET_DIR" -type f)
 echo ""
+echo "Phase 1 complete: Found ${#files_with_tags[@]} files with tags."
+
+###############################################
+# Phase 2: Processing file copy (filtered files)
+###############################################
+echo "Phase 2: Processing file copy..."
+total=${#files_with_tags[@]}
+count=0
+for file in "${files_with_tags[@]}"; do
+    count=$((count + 1))
+    process_file "$file" "$TARGET_DIR" "$DEST_DIR" "$RAW_DIR"
+    echo -ne "Processing progress: $count / $total files processed\r"
+done
+echo ""
+echo "Phase 2 complete: Processed $count files."
