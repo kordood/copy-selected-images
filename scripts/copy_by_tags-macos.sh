@@ -108,7 +108,7 @@ process_file() {
     local dest_dir="$3"
     local raw_dir="$4"
 
-    # DEST_DIR와 TARGET_DIR가 동일할 경우, 이미 복사된 파일은 건너뛰기
+    # DEST_DIR와 TARGET_DIR가 동일할 경우, 이미 복사된 파일은 건너뜀
     if is_already_copied "$file" "$dest_dir" "$target_dir"; then
         return
     fi
@@ -134,6 +134,7 @@ process_file() {
 }
 
 # --- Main ---
+
 TARGET_DIR="$1"
 DEST_DIR="${2:-$TARGET_DIR}"
 RAW_DIR="${3:-$DEST_DIR}"
@@ -142,6 +143,15 @@ if [ -z "$TARGET_DIR" ]; then
     usage
 fi
 
-find "$TARGET_DIR" -type f | while IFS= read -r file; do
+# 전체 파일 개수를 미리 계산하여 진행 상황 표시에 활용
+total=$(find "$TARGET_DIR" -type f | wc -l)
+count=0
+
+# 프로세스 진행 상황을 업데이트하며 파일 처리 (while 루프를 process substitution 방식으로 실행)
+while IFS= read -r file; do
+    count=$((count + 1))
     process_file "$file" "$TARGET_DIR" "$DEST_DIR" "$RAW_DIR"
-done
+    # 진행 상황 출력: carriage return(\r)을 이용해 같은 라인을 업데이트
+    echo -ne "Progress: $count / $total files processed\r"
+done < <(find "$TARGET_DIR" -type f)
+echo ""
